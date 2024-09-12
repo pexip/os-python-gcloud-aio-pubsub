@@ -1,0 +1,6 @@
+diff --git a/gcloud/py.typed b/gcloud/py.typed
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/gcloud/aio/py.typed b/gcloud/aio/py.typed
+deleted file mode 100644
+index e69de29..0000000

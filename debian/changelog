@@ -1,3 +1,10 @@
+python-gcloud-aio-pubsub (6.0.1-0+pexip24u3) pexip; urgency=medium
+
+  * Remove py.typed
+    They are included in gcloud-aio-auth and all other packages depend on that.
+
+ -- Huw Jones <huw@pexip.com>  Thu, 12 Sep 2024 11:12:46 +0100
+
 python-gcloud-aio-pubsub (6.0.1-0+pexip24u2) pexip; urgency=medium
 
   * Add patch to apply PR 811
