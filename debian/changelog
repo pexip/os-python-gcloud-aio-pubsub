@@ -1,3 +1,9 @@
+python-gcloud-aio-pubsub (6.0.1-0+pexip24u5) pexip; urgency=medium
+
+  * No change rebuild
+
+ -- Huw Jones <huw@pexip.com>  Fri, 13 Sep 2024 15:38:29 +0100
+
 python-gcloud-aio-pubsub (6.0.1-0+pexip24u4) pexip; urgency=medium
 
   * port metrics to aioprometheus
