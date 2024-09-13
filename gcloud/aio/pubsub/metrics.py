@@ -6,7 +6,10 @@ from typing import Any
 from typing import Iterator
 
 from gcloud.aio.auth import BUILD_GCLOUD_REST
-from typing_extensions import Self
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
 
 if BUILD_GCLOUD_REST:  # pylint: disable=too-complex
     pass
