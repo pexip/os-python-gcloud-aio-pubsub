@@ -1,3 +1,9 @@
+python-gcloud-aio-pubsub (6.0.1-0+pexip24u4) pexip; urgency=medium
+
+  * port metrics to aioprometheus
+
+ -- Huw Jones <huw@pexip.com>  Fri, 13 Sep 2024 12:45:36 +0100
+
 python-gcloud-aio-pubsub (6.0.1-0+pexip24u3) pexip; urgency=medium
 
   * Remove py.typed

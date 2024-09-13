@@ -10,7 +10,7 @@ Build-Depends:
  python3-all,
  python3-poetry-core,
  python3-gcloud-aio-auth,
- python3-prometheus-client,
+ python3-aioprometheus,
  python3-aiohttp,
  python3-pytest,
  python3-pytest-asyncio,
