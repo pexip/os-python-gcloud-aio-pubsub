@@ -1,0 +1,156 @@
+From ca711a8ae10682a92b4b3b1d84ebbf29430846f2 Mon Sep 17 00:00:00 2001
+From: Will Miller <will.miller@pexip.com>
+Date: Thu, 19 Sep 2024 15:19:05 +0100
+Subject: [PATCH] fix(pubsub): fix unhandled exception in subscriber task
+
+We have seen unhandled exceptions making their way to the root unhandled
+exception handler of the event loop in our application that uses pubsub
+subscribe(), as in the below Traceback. Whilst our application catches
+the relevant aiohttp errors when awaiting the subscribe() call, this
+exception remained unhandled. This is because subscribe was ignoring the
+tasks returned from the calls to asyncio.wait(), meaning any exception
+results on these tasks would not be handled and the tasks would get
+deleted when subscribe() returned.
+
+Fix this by gathering the results of all worker tasks before returning
+from subscribe(). Given that we're about to raise
+asyncio.CancelledError() and return, there's no point in raising the
+internal errors here, so just log them.
+
+```
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/gcloud/aio/pubsub/subscriber.py", line 403, in producer
+    new_messages = await asyncio.shield(pull_task)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/gcloud/aio/pubsub/subscriber.py", line 426, in producer
+    new_messages += await asyncio.wait_for(pull_task, 5)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/tasks.py", line 479, in wait_for
+    return fut.result()
+           ^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/gcloud/aio/pubsub/subscriber_client.py", line 157, in pull
+    resp = await s.post(
+           ^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/gcloud/aio/auth/session.py", line 190, in post
+    resp = await self.session.post(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/aiohttp/client.py", line 560, in _request
+    await resp.start(conn)
+  File "/usr/lib/python3/dist-packages/aiohttp/client_reqrep.py", line 899, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/aiohttp/streams.py", line 616, in read
+    await self._waiter
+aiohttp.client_exceptions.ServerDisconnectedError: Server disconnected
+```
+---
+ gcloud/aio/pubsub/subscriber.py | 25 +++++++++++--
+ tests/unit/subscriber_test.py   | 49 ++++++++++++++++++++++++++
+ 2 files changed, 71 insertions(+), 3 deletions(-)
+
+diff --git a/gcloud/aio/pubsub/subscriber.py b/gcloud/aio/pubsub/subscriber.py
+index f821d39a2..c5c0c3d09 100644
+--- a/gcloud/aio/pubsub/subscriber.py
++++ b/gcloud/aio/pubsub/subscriber.py
+@@ -542,14 +542,33 @@ async def subscribe(
+ 
+         for task in producer_tasks:
+             task.cancel()
+-        await asyncio.wait(producer_tasks, return_when=asyncio.ALL_COMPLETED)
++        producer_done, _ = await asyncio.wait(
++            producer_tasks,
++            return_when=asyncio.ALL_COMPLETED,
++        )
+ 
+         for task in consumer_tasks:
+             task.cancel()
+-        await asyncio.wait(consumer_tasks, return_when=asyncio.ALL_COMPLETED)
++        consumer_done, _ = await asyncio.wait(
++            consumer_tasks,
++            return_when=asyncio.ALL_COMPLETED,
++        )
+ 
+         for task in acker_tasks:
+             task.cancel()
+-        await asyncio.wait(acker_tasks, return_when=asyncio.ALL_COMPLETED)
++        acker_done, _ = await asyncio.wait(
++            acker_tasks,
++            return_when=asyncio.ALL_COMPLETED,
++        )
++
++        done = producer_done | consumer_done | acker_done
++        task_results = await asyncio.gather(*done, return_exceptions=True)
++        for result in task_results:
++            if isinstance(result, Exception) and not isinstance(
++                    result, asyncio.CancelledError):
++                log.info(
++                    'subscriber task exited with error',
++                    exc_info=result,
++                )
+ 
+         raise asyncio.CancelledError('subscriber shut down')
+diff --git a/tests/unit/subscriber_test.py b/tests/unit/subscriber_test.py
+index 707cde48d..0e2225666 100644
+--- a/tests/unit/subscriber_test.py
++++ b/tests/unit/subscriber_test.py
+@@ -949,6 +949,55 @@ async def test_subscribe_integrates_whole_chain(
+         with pytest.raises(asyncio.CancelledError):
+             await asyncio.wait_for(subscribe_task, 1)
+ 
++    @pytest.mark.asyncio
++    async def test_task_error_after_cancel(
++            subscriber_client,
++            application_callback,
++    ):
++        def exception_handler(_loop, context) -> None:
++            pytest.fail(f"Unhandled exception: {context['message']}")
++
++        # Ensure the test fails on unhandled exceptions
++        asyncio.get_running_loop().set_exception_handler(exception_handler)
++
++        pull_ret = asyncio.Future()
++        pull_called = asyncio.Event()
++
++        async def pull(*_args, **_kwargs):
++            pull_called.set()
++            return await pull_ret
++
++        subscriber_client.pull = pull
++
++        subscribe_task = asyncio.ensure_future(
++            subscribe(
++                'fake_subscription', application_callback,
++                subscriber_client, num_producers=1,
++                max_messages_per_producer=100, ack_window=0.0,
++                ack_deadline_cache_timeout=1000,
++                num_tasks_per_consumer=1, enable_nack=True,
++                nack_window=0.0,
++            ),
++        )
++
++        # Wait for the subscriber's producer task to call `pull()`
++        await pull_called.wait()
++
++        # Cancel the subscribe task
++        subscribe_task.cancel()
++
++        # Yield control to the event loop to allow the cancellation to be
++        # handled and graceful termination of the worker to occur
++        await asyncio.sleep(0)
++
++        # Cause the ongoing `pull()` invocation in the worker task to raise an
++        # error
++        pull_ret.set_exception(aiohttp.ServerConnectionError('pull error'))
++
++        # verify that the subscriber still shuts down gracefully
++        with pytest.raises(asyncio.CancelledError):
++            await asyncio.wait_for(subscribe_task, 1)
++
+     # =========
+     # client
+     # =========
