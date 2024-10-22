@@ -1,0 +1,25 @@
+From e172f5fa5779c21a2d22a1efbbec24940563a367 Mon Sep 17 00:00:00 2001
+From: Will Miller <will.miller@pexip.com>
+Date: Tue, 22 Oct 2024 12:51:55 +0200
+Subject: [PATCH] fix(pubsub): downgrade exception log to info
+
+This can happen when we encounter transient errors from Google PubSub,
+so we don't want to spam with error logs due to something that's not
+under our control.
+---
+ gcloud/aio/pubsub/subscriber.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gcloud/aio/pubsub/subscriber.py b/gcloud/aio/pubsub/subscriber.py
+index f821d39a2..33de7fe20 100644
+--- a/gcloud/aio/pubsub/subscriber.py
++++ b/gcloud/aio/pubsub/subscriber.py
+@@ -538,7 +538,7 @@ async def subscribe(
+         except asyncio.CancelledError:
+             log.debug('subscriber exited')
+         except Exception:
+-            log.exception('subscriber exited due to error')
++            log.info('subscriber exited due to error', exc_info=True)
+ 
+         for task in producer_tasks:
+             task.cancel()

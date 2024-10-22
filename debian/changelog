@@ -1,3 +1,9 @@
+python-gcloud-aio-pubsub (6.0.1-0+pexip24u7) pexip; urgency=medium
+
+  * downgrade exception log to info
+
+ -- Huw Jones <huw@pexip.com>  Tue, 22 Oct 2024 12:33:54 +0100
+
 python-gcloud-aio-pubsub (6.0.1-0+pexip24u6) pexip; urgency=medium
 
   * fix unhandled exception in subscriber task
