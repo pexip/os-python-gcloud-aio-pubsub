@@ -1,3 +1,9 @@
+python-gcloud-aio-pubsub (6.0.1-0+pexip25u1) pexip-trixie; urgency=medium
+
+  * Initial trixie build
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Tue, 29 Apr 2025 22:53:32 +0100
+
 python-gcloud-aio-pubsub (6.0.1-0+pexip24u7) pexip; urgency=medium
 
   * downgrade exception log to info
