@@ -1,3 +1,5 @@
+Remove gcloud/py.typed files
+
 diff --git a/gcloud/py.typed b/gcloud/py.typed
 deleted file mode 100644
 index e69de29..0000000
